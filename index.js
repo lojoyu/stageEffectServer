@@ -19,19 +19,15 @@ var emitInfo = {
 	taketurnId: 0
 }
 
-<<<<<<< HEAD
 var connectIndex = 0;
 var socketToIndex = {};
 var uuidToIndex = {};
 
-=======
->>>>>>> 5747678ee63ed124616d095c766bca713c56d6ff
 //socket.emit: send to self(sender)
 //socket.broadcast.emit: send to others in same namespace
 //receiver.emit(namespace.emit): send to all
 
 receiver.on('connection', (socket, req) => {
-<<<<<<< HEAD
 	socket.on('connected', ({uuid}) => {
 		console.log(`${socket.id} connected`);
 		if (!(uuid in uuidToIndex)) {
@@ -43,10 +39,6 @@ receiver.on('connection', (socket, req) => {
 
 	socket.on('disconnect', function() {
 		delete socketToIndex[socket.id];
-=======
-	console.log(`${socket.id} connected`)
-	socket.on('disconnect', function() {
->>>>>>> 5747678ee63ed124616d095c766bca713c56d6ff
     	console.log(`${socket.id} disconnect!`);
    });
 })
@@ -85,14 +77,10 @@ controller.on('connection', (socket) => {
 	// why cannot use controller
 	socket.on('showClient', ()=> {
 		console.log("showClient...");
-<<<<<<< HEAD
 		socket.emit('debug', getClientsByOrder());
 		//testSendRandom(1);
 		//testSendRandom(0.5);
-=======
-		testSendRandom(1);
-		testSendRandom(0.5);
->>>>>>> 5747678ee63ed124616d095c766bca713c56d6ff
+
 		//console.log(getPercentageClient(1));
 		//console.log(getPercentageClient(0.5));
 		// receiver.clients((error, clients) => {
