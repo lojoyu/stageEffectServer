@@ -107,6 +107,7 @@ function emitDataWithNextTime() {
 		emitInfo.waiting = true;
 		//receiver.emit('controlData', emitInfo.data);
 		receiverEmit();
+		console.log(`wait for: ${emitInfo.intervalTime}`);
 		setTimeout(emitDataWithNextTime, emitInfo.intervalTime);
 	}
 }
@@ -127,6 +128,8 @@ function receiverEmit() {
 		tempSender = tempSender.to(clients[emitInfo.taketurnId]);
 		emitInfo.taketurnId++;
 		if (emitInfo.taketurnId >= clients.length) {
+			console.log(`ZERO!!!`);
+			console.log(clients);
 			emitInfo.taketurnId = 0;
 			emitInfo.intervalTime = 0;
 		}
