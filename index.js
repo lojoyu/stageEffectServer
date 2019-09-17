@@ -19,13 +19,26 @@ var emitInfo = {
 	taketurnId: 0
 }
 
+var connectIndex = 0;
+var socketToIndex = {};
+var uuidToIndex = {};
+
 //socket.emit: send to self(sender)
 //socket.broadcast.emit: send to others in same namespace
 //receiver.emit(namespace.emit): send to all
 
 receiver.on('connection', (socket, req) => {
-	console.log(`${socket.id} connected`)
+	socket.on('connected', ({uuid}) => {
+		console.log(`${socket.id} connected`);
+		if (!(uuid in uuidToIndex)) {
+			uuidToIndex[uuid] = connectIndex++;
+		} 
+		socketToIndex[socket.id] = uuidToIndex[uuid];
+		console.log(socketToIndex);
+	})
+
 	socket.on('disconnect', function() {
+		delete socketToIndex[socket.id];
     	console.log(`${socket.id} disconnect!`);
    });
 })
@@ -64,8 +77,9 @@ controller.on('connection', (socket) => {
 	// why cannot use controller
 	socket.on('showClient', ()=> {
 		console.log("showClient...");
-		testSendRandom(1);
-		testSendRandom(0.5);
+		socket.emit('debug', getClientsByOrder());
+		//testSendRandom(1);
+		//testSendRandom(0.5);
 		//console.log(getPercentageClient(1));
 		//console.log(getPercentageClient(0.5));
 		// receiver.clients((error, clients) => {
@@ -104,8 +118,8 @@ function receiverEmit() {
 				tempSender = tempSender.to(e);
 			});
 		}
-	} else {
-		var clients = getReceiverClients()
+	} else { // taketurn
+		var clients = getClientsByOrder();
 		console.log(`send to ${clients[emitInfo.taketurnId]}`);
 		tempSender = tempSender.to(clients[emitInfo.taketurnId]);
 		emitInfo.taketurnId++;
@@ -133,12 +147,20 @@ function getPercentageClients(percentage) {
 	
 }
 
+function getClientsByOrder() {
+	return getReceiverClients().sort(indexsort);
+}
+
 function getReceiverClients() {
 	var receiverClients = [];
 	Object.keys(receiver.adapter.sids).forEach(function(key) {
 	    receiverClients.push(key);
 	});
 	return receiverClients;
+}
+
+function indexsort(a, b) {
+	return socketToIndex[a] - socketToIndex[b];
 }
 
 function randomsort(a, b) {
