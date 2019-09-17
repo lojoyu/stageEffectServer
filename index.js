@@ -122,6 +122,7 @@ function receiverEmit() {
 		}
 	} else { // taketurn
 		var clients = getClientsByOrder();
+		console.log(`id: ${emitInfo.taketurnId}`);
 		console.log(`send to ${clients[emitInfo.taketurnId]}`);
 		tempSender = tempSender.to(clients[emitInfo.taketurnId]);
 		emitInfo.taketurnId++;
