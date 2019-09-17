@@ -31,7 +31,8 @@ receiver.on('connection', (socket, req) => {
 	socket.on('connected', ({uuid}) => {
 		console.log(`${socket.id} connected`);
 		if (!(uuid in uuidToIndex)) {
-			uuidToIndex[uuid] = connectIndex++;
+			//uuidToIndex[uuid] = connectIndex++;
+			uuidToIndex[uuid] = Date.now();
 		} 
 		socketToIndex[socket.id] = uuidToIndex[uuid];
 		console.log(socketToIndex);
