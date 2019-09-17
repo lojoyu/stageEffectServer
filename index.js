@@ -127,6 +127,7 @@ function receiverEmit() {
 		console.log(`send to ${clients[emitInfo.taketurnId]}`);
 		tempSender = tempSender.to(clients[emitInfo.taketurnId]);
 		emitInfo.taketurnId++;
+		console.log(`id add: ${emitInfo.taketurnId} - clients len: ${clients.length}`);
 		if (emitInfo.taketurnId >= clients.length) {
 			console.log(`ZERO!!!`);
 			console.log(clients);
