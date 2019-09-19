@@ -112,8 +112,8 @@ function receiverEmit() {
 		//console.log(`id: ${emitInfo.taketurnId}`);
 		//console.log(`send to ${clients[emitInfo.taketurnId]}`);
 		let clientAtIndex = clients[emitInfo.taketurnId];
-		if (Array.isArray(clientsAtIndex)) {
-			clientsAtIndex.forEach((e) => {
+		if (Array.isArray(clientAtIndex)) {
+			clientAtIndex.forEach((e) => {
 				tempSender = tempSender.to(e);
 			})
 		} else {
