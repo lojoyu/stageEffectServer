@@ -16,7 +16,9 @@ var emitInfo = {
 	data: {},
 	waiting: false,
 	mode: {},
-	taketurnId: 0
+	taketurnId: 0,
+	reverse: 1,
+	sortArray: [],
 }
 
 var connectIndex = 0;
@@ -76,28 +78,9 @@ controller.on('connection', (socket) => {
 	})
 
 	// why cannot use controller
-	socket.on('showClient', ()=> {
+	socket.on('showClient', (order)=> {
 		console.log("showClient...");
-		socket.emit('debug', getClientsByOrder());
-		//testSendRandom(1);
-		//testSendRandom(0.5);
-
-		//console.log(getPercentageClient(1));
-		//console.log(getPercentageClient(0.5));
-		// receiver.clients((error, clients) => {
-		// 	if (error) throw error;
-		// 	console.log(clients);
-		// 	socket.emit('showClient', clients);
-			
-		// 	// for (let i=0; i<5; i++) {
-		// 	// 	setTimeout(()=> {
-		// 	// 		receiver.to(clients[0]).emit('debug', "fromMax "+i);
-		// 	// 		socket.emit('debug', "fromMax "+i);
-		// 	// 	}, 3000*i)
-		// 	// }
-		// 	//receiver.to(clients[0]).emit('debug', "fromMax");
-
-		// });
+		socket.emit('debug', getClientsByOrder(order));
 	})
 })
 
@@ -122,10 +105,21 @@ function receiverEmit() {
 			});
 		}
 	} else { // taketurn
-		var clients = getClientsByOrder();
-		console.log(`id: ${emitInfo.taketurnId}`);
-		console.log(`send to ${clients[emitInfo.taketurnId]}`);
-		tempSender = tempSender.to(clients[emitInfo.taketurnId]);
+		let order = 1;
+		if ("order" in emitInfo.mode) order = emitInfo.mode.order;
+		let clients = getClientsByOrder(order);
+		console.log(clients);
+		//console.log(`id: ${emitInfo.taketurnId}`);
+		//console.log(`send to ${clients[emitInfo.taketurnId]}`);
+		let clientAtIndex = clients[emitInfo.taketurnId];
+		if (Array.isArray(clientsAtIndex)) {
+			clientsAtIndex.forEach((e) => {
+				tempSender = tempSender.to(e);
+			})
+		} else {
+			tempSender = tempSender.to(clientAtIndex);
+		}
+		
 		emitInfo.taketurnId++;
 		console.log(`id add: ${emitInfo.taketurnId} - clients len: ${clients.length}`);
 		if (emitInfo.taketurnId >= clients.length) {
@@ -155,7 +149,41 @@ function getPercentageClients(percentage) {
 }
 
 
-function getClientsByOrder() {
+function getClientsByOrder(order) {
+	emitInfo.reverse = 1;
+	emitInfo.sortArray = socketToIndex;
+	if (Number.isInteger(order)) {
+		emitInfo.reverse = order;	
+	} 
+	let clients = getReceiverClients().sort(indexsort);
+
+	if (Array.isArray(order)) {
+		console.log(order);
+		emitInfo.reverse = 1;
+		clients.forEach((e, index) => {
+			if (index < order.length)
+		  		emitInfo.sortArray[e] = order[index];
+		  	else 
+		  		emitInfo.sortArray[e] = 0;
+		})
+		console.log(emitInfo.sortArray);
+		clients = getReceiverClients().sort(indexsort);
+	}
+	else if (order == "middle") {
+		
+		console.log(clients);
+		let mid = Math.floor (clients.length / 2);
+		let count = 1;
+		let newClients = [clients[mid]];
+		while ((mid-count >= 0) || (mid+count < clients.length)) {
+			let arr = [];
+			if (mid-count >= 0) arr.push(clients[mid-count]);
+			if (mid+count < clients.length) arr.push(clients[mid+count]);
+			newClients.push(arr);
+			count++;
+		}
+		return newClients;
+	} 
 	return getReceiverClients().sort(indexsort);
 }
 
@@ -168,7 +196,7 @@ function getReceiverClients() {
 }
 
 function indexsort(a, b) {
-	return socketToIndex[a] - socketToIndex[b];
+	return emitInfo.sortArray[a]*emitInfo.reverse - emitInfo.sortArray[b]*emitInfo.reverse;
 }
 
 function randomsort(a, b) {
