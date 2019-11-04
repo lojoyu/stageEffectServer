@@ -9,6 +9,7 @@ const server = http.createServer((req, res) => {
 const io = socketio(server);
 const receiver = io.of('/receiver');
 const controller = io.of('/controller');
+const user = io.of('/user');
 
 var emitInfo = {
 	loop: null,
@@ -44,6 +45,14 @@ receiver.on('connection', (socket, req) => {
 		delete socketToIndex[socket.id];
     	console.log(`${socket.id} disconnect!`);
    });
+})
+
+user.on('connection', (socket) => {
+	console.log('user connected');
+	socket.on('osc', (data) => {
+		console.log(data);
+		controller.emit('osc', data);
+	})
 })
 
 controller.on('connection', (socket) => {
