@@ -39,6 +39,7 @@ receiver.on('connection', (socket, req) => {
 		} 
 		socketToIndex[socket.id] = uuidToIndex[uuid];
 		console.log(socketToIndex);
+		controller.emit('userConnect', 'userConnect');
 	})
 
 	socket.on('disconnect', function() {
