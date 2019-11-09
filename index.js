@@ -92,6 +92,10 @@ controller.on('connection', (socket) => {
 		console.log("showClient...");
 		socket.emit('debug', getClientsByOrder(order));
 	})
+
+	socket.on('pause', (data)=> {
+		socket.emit('pause', data);
+	})
 })
 
 function emitDataWithNextTime() {
