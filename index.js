@@ -17,9 +17,9 @@ var emitInfo = {
 	data: {},
 	waiting: false,
 	mode: {},
-	taketurnId: 0,
+	taketurnId: -1,
 	reverse: 1,
-	sortArray: [],
+	sortArray: []
 }
 
 var connectIndex = 0;
@@ -45,7 +45,13 @@ receiver.on('connection', (socket, req) => {
 	socket.on('disconnect', function() {
 		delete socketToIndex[socket.id];
     	console.log(`${socket.id} disconnect!`);
-   });
+	});
+   
+   	socket.on('speakover', receiverOnSpeakover);
+
+	socket.on('debug', (data) => {
+		socket.emit('debug', data);
+	})
 })
 
 user.on('connection', (socket) => {
@@ -96,7 +102,67 @@ controller.on('connection', (socket) => {
 	socket.on('pause', (data)=> {
 		socket.emit('pause', data);
 	})
+
+	socket.on('speak', controllerOnSpeak);
 })
+
+/*********************************/
+/********  controller on  ********/
+
+function controllerOnSpeak(data) {
+	//let sender = getSender(getPercentageClients(1), receiver);
+	//TODO: check if used?
+	emitInfo.mode.type = 'speak';
+	emitInfo.data.sentences = txtToSentence(data);
+	emitInfo.data.sentenceId = 0;
+	//TODO: to allot sentence
+	emitInfo.sortArray = getPercentageClients(1);
+	let sender = getTaketurnSender(emitInfo.sortArray, receiver, 0);
+	if (0 < emitInfo.data.sentences.length) {
+		console.log('emit speak', emitInfo.data.sentences[0]);
+		let data = {
+			id: 0,
+			text: emitInfo.data.sentences[0],
+		}
+		sender.emit('speak', data);
+	}
+	emitInfo.taketurnId = 1;
+}
+
+/*********************************/
+/********  receiver on  ********/
+
+function receiverOnSpeakover (data) {
+	console.log('receiver on speak over', data.id);
+	if (data.id+1 !== emitInfo.taketurnId) return;
+	emitInfo.data.sentenceId++;
+	let sender = getTaketurnSender(emitInfo.sortArray, receiver, emitInfo.taketurnId);
+	if (emitInfo.data.sentenceId < emitInfo.data.sentences.length) {
+		console.log('speak', emitInfo.data.sentences[emitInfo.data.sentenceId]);
+		let data = {
+			id: emitInfo.taketurnId,
+			text: emitInfo.data.sentences[emitInfo.data.sentenceId],
+		}
+		sender.emit('speak', data);
+	}
+	emitInfo.taketurnId++;
+}
+
+
+/****
+ * split text into sentence
+ * using , . ? ! : ;
+ *  @param string text
+ * 	@returns array result
+ ****/
+function txtToSentence(text) {
+	// add a period for match regexp.
+	text += '.';
+	let re = /[^\.,!\?\:;]+[\.,!\?\:;]+/g;
+	let result = text.match(re);
+	if (result === null || result == undefined) return [text];
+	return result;
+};
 
 function emitDataWithNextTime() {
 	emitInfo.waiting = false;
@@ -125,14 +191,15 @@ function receiverEmit() {
 		console.log(clients);
 		//console.log(`id: ${emitInfo.taketurnId}`);
 		//console.log(`send to ${clients[emitInfo.taketurnId]}`);
-		let clientAtIndex = clients[emitInfo.taketurnId];
-		if (Array.isArray(clientAtIndex)) {
-			clientAtIndex.forEach((e) => {
-				tempSender = tempSender.to(e);
-			})
-		} else {
-			tempSender = tempSender.to(clientAtIndex);
-		}
+		// let clientAtIndex = clients[emitInfo.taketurnId];
+		// if (Array.isArray(clientAtIndex)) {
+		// 	clientAtIndex.forEach((e) => {
+		// 		tempSender = tempSender.to(e);
+		// 	})
+		// } else {
+		// 	tempSender = tempSender.to(clientAtIndex);
+		// }
+		tempSender = getTaketurnSender(clients, tempSender, emitInfo.taketurnId);
 		
 		emitInfo.taketurnId++;
 		console.log(`id add: ${emitInfo.taketurnId} - clients len: ${clients.length}`);
@@ -144,6 +211,27 @@ function receiverEmit() {
 		}
 	}
 	tempSender.emit('controlData', emitInfo.data);
+}
+
+function getTaketurnSender(clientsArr, sender, id) {
+	let tempSender = sender;
+	if (Array.isArray(id)) {
+		id.forEach((e) => {
+			tempSender = tempSender.to(clientsArr[e%clientsArr.length]);
+		})
+	} else {
+		tempSender = tempSender.to(clientsArr[id%clientsArr.length]);
+	}
+	//console.log(sender);
+	return tempSender;
+}
+
+function getSender(clientsArr, sender) {
+	clientsArr.forEach((e) => {
+		//console.log(`send to ${e}`);
+		sender = sender.to(e);
+	});
+	return sender;
 }
 
 function testSendRandom(percentage) {
@@ -161,7 +249,6 @@ function getPercentageClients(percentage) {
     return newClients.slice(0, Math.ceil(newClients.length*percentage));
 	
 }
-
 
 function getClientsByOrder(order) {
 	emitInfo.reverse = 1;
@@ -217,7 +304,55 @@ function randomsort(a, b) {
     return Math.random() > .5 ? -1 : 1;
 }
 
-
 server.listen(port, () => {
     console.log("Listening on %d", server.address().port);
 });
+
+///// use for develop
+/*
+const prompts = require('prompts');
+
+let promptTest = async () => {
+	const response = await prompts({
+	  type: 'text',
+	  name: 'command',
+	  message: 'Enter some text...',
+	  //validate: value => value < 18 ? `Nightclub is 18+ only` : true
+	});
+	console.log(response.command);
+	if (!switchCommand(response.command)) {
+		console.log(txtToSentence(response.command));
+	}
+	if (response.command !== 'exit' &&  response.command !== undefined) promptTest();
+}
+promptTest();
+
+async function switchCommand(command) {
+	switch(command) {
+		case 'speak':
+			const sentence = await prompts({
+				type: 'text',
+				name: 'text',
+				message: 'Speak something...',
+				validate: text => text === undefined ? `enter valid text!` : true
+			});
+			controllerOnSpeak(sentence.text);
+			break;
+
+		case 'speakover':
+			
+			const data = await prompts({
+				type: 'number',
+				name: 'value',
+				message: 'Enter speakover id',
+				validate: value => value < 0 ? `enter valid number!` : true
+			});
+			receiverOnSpeakover({id: data.value});
+			break;
+
+		default:
+			return false;
+	}
+	return true;
+}
+*/
