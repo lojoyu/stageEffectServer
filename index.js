@@ -104,6 +104,8 @@ controller.on('connection', (socket) => {
 	})
 
 	socket.on('speak', controllerOnSpeak);
+
+	socket.on('speakconfig', controllerOnSpeakconfig);
 })
 
 /*********************************/
@@ -127,6 +129,10 @@ function controllerOnSpeak(data) {
 		sender.emit('speak', data);
 	}
 	emitInfo.taketurnId = 1;
+}
+
+function controllerOnSpeakconfig(data) {
+	if (data == 'changeVoice') receiver.emit('speakconfig', {mode: 'changeVoice'});
 }
 
 /*********************************/
