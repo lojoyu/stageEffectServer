@@ -167,7 +167,8 @@ function controllerOnSpeakAdvance(data) {
 }
 
 function controllerOnSpeakConfig(data) {
-	if (data == 'changeVoice') receiver.emit('speakconfig', {mode: 'changeVoice'});
+	console.log('speak config: ', data);
+	if (data == 'changeVoice') receiver.emit('speakConfig', {mode: 'changeVoice'});
 }
 
 /*********************************/
