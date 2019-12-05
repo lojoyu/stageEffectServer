@@ -47,7 +47,7 @@ receiver.on('connection', (socket, req) => {
     	console.log(`${socket.id} disconnect!`);
 	});
    
-   	socket.on('speakover', receiverOnSpeakover);
+   	socket.on('speakOver', receiverOnSpeakover);
 
 	socket.on('debug', (data) => {
 		socket.emit('debug', data);
@@ -104,8 +104,13 @@ controller.on('connection', (socket) => {
 	})
 
 	socket.on('speak', controllerOnSpeak);
+	socket.on('speakAdvance', controllerOnSpeakAdvance);
+	socket.on('speakConfig', controllerOnSpeakConfig);
 
-	socket.on('speakconfig', controllerOnSpeakconfig);
+	// socket.on('debug', (data)=>{
+	// 	controller.emit('debug', data);
+	// 	receiver.emit('debug', data);
+	// })
 })
 
 /*********************************/
@@ -117,6 +122,8 @@ function controllerOnSpeak(data) {
 	emitInfo.mode.type = 'speak';
 	emitInfo.data.sentences = txtToSentence(data);
 	emitInfo.data.sentenceId = 0;
+	emitInfo.data.percentage = 0;
+	emitInfo.waitforNum = 1;
 	//TODO: to allot sentence
 	emitInfo.sortArray = getPercentageClients(1);
 	let sender = getTaketurnSender(emitInfo.sortArray, receiver, 0);
@@ -131,7 +138,35 @@ function controllerOnSpeak(data) {
 	emitInfo.taketurnId = 1;
 }
 
-function controllerOnSpeakconfig(data) {
+function controllerOnSpeakAdvance(data) {
+	//TODO: check if used?
+	emitInfo.mode.type = 'speak';
+	emitInfo.data.sentences = txtToSentence(data.text);
+	emitInfo.data.sentenceId = 0;
+	if (data.percentage == 0 || !(data.percentage)) {
+		controllerOnSpeak(data.text);
+		return;
+	}
+	emitInfo.data.percentage = data.percentage;
+
+	//TODO: to allot sentence
+	emitInfo.sortArray = getPercentageClients(data.percentage);
+	let sender = getSender(emitInfo.sortArray, receiver);
+	console.log('---- emitInfo.waitforNum ------', emitInfo.sortArray.length);
+	emitInfo.waitforNum = emitInfo.sortArray.length;
+	//let sender = getTaketurnSender(emitInfo.sortArray, receiver, 0);
+	if (0 < emitInfo.data.sentences.length) {
+		console.log('emit speak', emitInfo.data.sentences[0]);
+		let data = {
+			id: 0,
+			text: emitInfo.data.sentences[0],
+		}
+		sender.emit('speak', data);
+	}
+	emitInfo.taketurnId = 1;
+}
+
+function controllerOnSpeakConfig(data) {
 	if (data == 'changeVoice') receiver.emit('speakconfig', {mode: 'changeVoice'});
 }
 
@@ -139,10 +174,24 @@ function controllerOnSpeakconfig(data) {
 /********  receiver on  ********/
 
 function receiverOnSpeakover (data) {
-	console.log('receiver on speak over', data.id);
+	console.log('receiver on speak over', data.id, emitInfo.waitforNum );
+	//check if time out
 	if (data.id+1 !== emitInfo.taketurnId) return;
+	emitInfo.waitforNum -= 1;
+	if (emitInfo.waitforNum != 0) return;
+
 	emitInfo.data.sentenceId++;
-	let sender = getTaketurnSender(emitInfo.sortArray, receiver, emitInfo.taketurnId);
+	let sender = receiver;
+	if (emitInfo.data.percentage == 0) {//single
+		sender = getTaketurnSender(emitInfo.sortArray, receiver, emitInfo.taketurnId);
+		emitInfo.waitforNum = 1;
+	} else { //percentage
+		console.log('next:' , emitInfo.data.percentage);
+		let cliT = getPercentageClients(emitInfo.data.percentage)
+		sender = getSender(cliT, receiver);
+		emitInfo.waitforNum = cliT.length;
+	}
+
 	if (emitInfo.data.sentenceId < emitInfo.data.sentences.length) {
 		console.log('speak', emitInfo.data.sentences[emitInfo.data.sentenceId]);
 		let data = {
@@ -150,8 +199,13 @@ function receiverOnSpeakover (data) {
 			text: emitInfo.data.sentences[emitInfo.data.sentenceId],
 		}
 		sender.emit('speak', data);
+		emitInfo.taketurnId++;
+	} else {
+		//if no more sentence, send speakOver to controller.
+		controller.emit('speakOver', 'speakOver');
+		emitInfo.taketurnId = -1;
 	}
-	emitInfo.taketurnId++;
+	
 }
 
 
@@ -253,7 +307,6 @@ function testSendRandom(percentage) {
 function getPercentageClients(percentage) {
 	var newClients = getReceiverClients().sort(randomsort);
     return newClients.slice(0, Math.ceil(newClients.length*percentage));
-	
 }
 
 function getClientsByOrder(order) {
@@ -315,50 +368,65 @@ server.listen(port, () => {
 });
 
 ///// use for develop
-/*
-const prompts = require('prompts');
 
-let promptTest = async () => {
-	const response = await prompts({
-	  type: 'text',
-	  name: 'command',
-	  message: 'Enter some text...',
-	  //validate: value => value < 18 ? `Nightclub is 18+ only` : true
-	});
-	console.log(response.command);
-	if (!switchCommand(response.command)) {
-		console.log(txtToSentence(response.command));
-	}
-	if (response.command !== 'exit' &&  response.command !== undefined) promptTest();
-}
-promptTest();
+// const prompts = require('prompts');
 
-async function switchCommand(command) {
-	switch(command) {
-		case 'speak':
-			const sentence = await prompts({
-				type: 'text',
-				name: 'text',
-				message: 'Speak something...',
-				validate: text => text === undefined ? `enter valid text!` : true
-			});
-			controllerOnSpeak(sentence.text);
-			break;
+// let promptTest = async () => {
+// 	const response = await prompts({
+// 	  type: 'text',
+// 	  name: 'command',
+// 	  message: 'Enter some text...',
+// 	  //validate: value => value < 18 ? `Nightclub is 18+ only` : true
+// 	});
+// 	console.log(response.command);
+// 	if (!switchCommand(response.command)) {
+// 		console.log(txtToSentence(response.command));
+// 	}
+// 	if (response.command !== 'exit' &&  response.command !== undefined) promptTest();
+// }
+// promptTest();
 
-		case 'speakover':
+// async function switchCommand(command) {
+// 	switch(command) {
+// 		case 'speak':
+// 			const sentence = await prompts({
+// 				type: 'text',
+// 				name: 'text',
+// 				message: 'Speak something...',
+// 				validate: text => text === undefined ? `enter valid text!` : true
+// 			});
+// 			controllerOnSpeak(sentence.text);
+// 			break;
+
+// 		case 'speakAdvance':
+// 			const data2 = await prompts({
+// 				type: 'number',
+// 				name: 'value',
+// 				message: 'Enter speak percentage',
+// 				validate: value => value < 0 ? `enter valid number!` : true
+// 			});
+// 			// const sentence2 = await prompts({
+// 			// 	type: 'text',
+// 			// 	name: 'text',
+// 			// 	message: 'Speak something advanced...',
+// 			// 	validate: text => text === undefined ? `enter valid text!` : true
+// 			// });
+// 			controllerOnSpeak({text:"hello, i am, QQ boy, you are, ready?", percentage:data2.value});
+// 			break;
+
+// 		case 'speakover':
 			
-			const data = await prompts({
-				type: 'number',
-				name: 'value',
-				message: 'Enter speakover id',
-				validate: value => value < 0 ? `enter valid number!` : true
-			});
-			receiverOnSpeakover({id: data.value});
-			break;
+// 			const data = await prompts({
+// 				type: 'number',
+// 				name: 'value',
+// 				message: 'Enter speakover id',
+// 				validate: value => value < 0 ? `enter valid number!` : true
+// 			});
+// 			receiverOnSpeakover({id: data.value});
+// 			break;
 
-		default:
-			return false;
-	}
-	return true;
-}
-*/
+// 		default:
+// 			return false;
+// 	}
+// 	return true;
+// }
