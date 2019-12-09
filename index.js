@@ -19,7 +19,8 @@ var emitInfo = {
 	mode: {},
 	taketurnId: -1,
 	reverse: 1,
-	sortArray: []
+	sortArray: [],
+	timeout: null
 }
 
 var connectIndex = 0;
@@ -133,7 +134,7 @@ function controllerOnSpeak(data) {
 			id: 0,
 			text: emitInfo.data.sentences[0],
 		}
-		sender.emit('speak', data);
+		emitSpeak(sender, data);
 	}
 	emitInfo.taketurnId = 1;
 }
@@ -165,7 +166,7 @@ function controllerOnSpeakAdvance(data) {
 		}
 		if (emitInfo.data.rate) data.rate = emitInfo.data.rate;
 		if (emitInfo.data.pitch) data.pitch = emitInfo.data.pitch;
-		sender.emit('speak', data);
+		emitSpeak(sender, data);
 	}
 	emitInfo.taketurnId = 1;
 }
@@ -185,34 +186,16 @@ function receiverOnSpeakover (data) {
 	emitInfo.waitforNum -= 1;
 	if (emitInfo.waitforNum != 0) return;
 
-	emitInfo.data.sentenceId++;
-	let sender = receiver;
-	if (emitInfo.data.percentage == 0) {//single
-		sender = getTaketurnSender(emitInfo.sortArray, receiver, emitInfo.taketurnId);
-		emitInfo.waitforNum = 1;
-	} else { //percentage
-		console.log('next:' , emitInfo.data.percentage);
-		let cliT = getPercentageClients(emitInfo.data.percentage)
-		sender = getSender(cliT, receiver);
-		emitInfo.waitforNum = cliT.length;
+	if (emitInfo.timeout) {
+		clearTimeout(emitInfo.timeout);
+		emitInfo.timeout = null;
 	}
-
-	if (emitInfo.data.sentenceId < emitInfo.data.sentences.length) {
-		console.log('speak', emitInfo.data.sentences[emitInfo.data.sentenceId]);
-		let data = {
-			id: emitInfo.taketurnId,
-			text: emitInfo.data.sentences[emitInfo.data.sentenceId],
-		}
-		sender.emit('speak', data);
-		emitInfo.taketurnId++;
-	} else {
-		//if no more sentence, send speakOver to controller.
-		controller.emit('speakOver', 'speakOver');
-		emitInfo.taketurnId = -1;
-	}
+	nextSpeak();
 	
 }
 
+/*********************************/
+/********  usage          ********/
 
 /****
  * split text into sentence
@@ -232,6 +215,67 @@ function txtToSentence(text) {
 	console.log('result', result);
 	return result;
 };
+
+function nextSpeak() {
+	emitInfo.data.sentenceId++;
+
+	let sender = receiver;
+	if (emitInfo.data.percentage == 0) {//single
+		sender = getTaketurnSender(emitInfo.sortArray, receiver, emitInfo.taketurnId);
+		emitInfo.waitforNum = 1;
+	} else { //percentage
+		console.log('next:' , emitInfo.data.percentage);
+		let cliT = getPercentageClients(emitInfo.data.percentage)
+		sender = getSender(cliT, receiver);
+		emitInfo.waitforNum = cliT.length;
+	}
+
+	if (emitInfo.data.sentenceId < emitInfo.data.sentences.length) {
+		console.log('speak', emitInfo.data.sentences[emitInfo.data.sentenceId]);
+		let data = {
+			id: emitInfo.taketurnId,
+			text: emitInfo.data.sentences[emitInfo.data.sentenceId],
+		}
+		if (emitInfo.data.rate) data.rate = emitInfo.data.rate;
+		if (emitInfo.data.pitch) data.pitch = emitInfo.data.pitch;
+
+		emitSpeak(sender, data);
+		//sender.emit('speak', data);
+		emitInfo.taketurnId++;
+	} else {
+		controller.emit('speakOver', 'speakOver');
+		emitInfo.taketurnId = -1;
+	}
+}
+
+
+/****
+ * emit speak while add timeout function
+ *  @param sender sender
+ *  @param Json 	data
+ ****/
+function emitSpeak(sender, data) {
+	if (emitInfo.timeout) {
+		clearTimeout(emitInfo.timeout);
+	}
+	sender.emit('speak', data);
+	
+	let ms = data.text.length*500;
+	if (data.rate) ms *= 1/data.rate;
+	ms += 500;
+	emitInfo.timeout = setTimeout(()=>{
+		speakTimeout(data.id);
+	}, ms);
+	console.log(data.text, '==>', ms);
+}
+
+function speakTimeout(id) {
+	console.log('***** speak timeout!!!');
+	if (id+1 == emitInfo.taketurnId){
+		emitInfo.timeout = null;
+		nextSpeak();
+	}
+}
 
 function emitDataWithNextTime() {
 	emitInfo.waiting = false;
