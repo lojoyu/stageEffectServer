@@ -141,13 +141,15 @@ function controllerOnSpeak(data) {
 function controllerOnSpeakAdvance(data) {
 	//TODO: check if used?
 	emitInfo.mode.type = 'speak';
+	emitInfo.data = data;
 	emitInfo.data.sentences = txtToSentence(data.text);
+	
 	emitInfo.data.sentenceId = 0;
 	if (data.percentage == 0 || !(data.percentage)) {
 		controllerOnSpeak(data.text);
 		return;
 	}
-	emitInfo.data.percentage = data.percentage;
+	//emitInfo.data.percentage = data.percentage;
 
 	//TODO: to allot sentence
 	emitInfo.sortArray = getPercentageClients(data.percentage);
@@ -161,6 +163,8 @@ function controllerOnSpeakAdvance(data) {
 			id: 0,
 			text: emitInfo.data.sentences[0],
 		}
+		if (emitInfo.data.rate) data.rate = emitInfo.data.rate;
+		if (emitInfo.data.pitch) data.pitch = emitInfo.data.pitch;
 		sender.emit('speak', data);
 	}
 	emitInfo.taketurnId = 1;
