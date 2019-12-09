@@ -222,10 +222,14 @@ function receiverOnSpeakover (data) {
  ****/
 function txtToSentence(text) {
 	// add a period for match regexp.
+	console.log('txtToSentence', text);
 	text += '.';
 	let re = /[^\.,!\?\:;]+[\.,!\?\:;]+/g;
 	let result = text.match(re);
-	if (result === null || result == undefined) return [text];
+	if (result === null || result == undefined) return [''];
+	console.log('last:', result[result.length-1]);
+	result[result.length-1] = result[result.length-1].slice(0,-1);
+	console.log('result', result);
 	return result;
 };
 
@@ -428,6 +432,16 @@ server.listen(port, () => {
 // 				validate: value => value < 0 ? `enter valid number!` : true
 // 			});
 // 			receiverOnSpeakover({id: data.value});
+// 			break;
+		
+// 		case 'text':
+// 			const sentence3 = await prompts({
+// 				type: 'text',
+// 				name: 'text',
+// 				message: 'Speak something...',
+// 				validate: text => text === undefined ? `enter valid text!` : true
+// 			});
+// 			console.log(txtToSentence(sentence3.text));
 // 			break;
 
 // 		default:
