@@ -125,6 +125,7 @@ function controllerOnSpeak(data) {
 	//let sender = getSender(getPercentageClients(1), receiver);
 	//TODO: check if used?
 	emitInfo.mode.type = 'speak';
+	emitInfo.nowSpeak = [];
 	emitInfo.data.sentences = txtToSentence(data);
 	emitInfo.data.sentenceId = 0;
 	emitInfo.data.percentage = 0;
@@ -146,6 +147,7 @@ function controllerOnSpeak(data) {
 function controllerOnSpeakAdvance(data) {
 	//TODO: check if used?
 	emitInfo.mode.type = 'speak';
+	emitInfo.nowSpeak = [];
 	emitInfo.data = data;
 	emitInfo.data.sentences = txtToSentence(data.text);
 	
@@ -182,7 +184,8 @@ function controllerOnSpeakConfig(data, socket) {
 		emitInfo.timeoutdelay = data.delay;
 	}
 	else if (data.mode == 'showUser') {
-		socket.emit('showUser', socketToVoice);
+		console.log('showUser');
+		socket.emit('speakConfig', {mode: 'showUser', data: socketToVoice});
 	}
 	else receiver.emit('speakConfig', data);
 	//if (data.mode == 'changeVoice') receiver.emit('speakConfig', data);
@@ -239,9 +242,11 @@ function txtToSentence(text) {
 };
 
 function nextSpeak() {
+	emitInfo.nowSpeak = [];
 	emitInfo.data.sentenceId++;
 
 	let sender = receiver;
+	//let speakVoices = [];
 	if (emitInfo.data.percentage == 0) {//single
 		sender = getTaketurnSender(emitInfo.sortArray, receiver, emitInfo.taketurnId);
 		emitInfo.waitforNum = 1;
@@ -281,7 +286,10 @@ function emitSpeak(sender, data) {
 		clearTimeout(emitInfo.timeout);
 	}
 	sender.emit('speak', data);
-	
+	console.log(emitInfo.nowSpeak);
+	receiver.emit('speakConfig', {mode: 'nowSpeak', data: emitInfo.nowSpeak});
+	controller.emit('speakConfig', {mode: 'nowSpeak', data: emitInfo.nowSpeak});
+
 	let ms = data.text.length*emitInfo.timeoutspeed;
 	if (data.rate) ms *= 1/data.rate;
 	ms += emitInfo.timeoutdelay;
@@ -353,9 +361,12 @@ function getTaketurnSender(clientsArr, sender, id) {
 	if (Array.isArray(id)) {
 		id.forEach((e) => {
 			tempSender = tempSender.to(clientsArr[e%clientsArr.length]);
+			if (emitInfo.mode.type == 'speak') emitInfo.nowSpeak.push(socketToVoice[clientsArr[e%clientsArr.length]]);
 		})
 	} else {
 		tempSender = tempSender.to(clientsArr[id%clientsArr.length]);
+		if (emitInfo.mode.type == 'speak') emitInfo.nowSpeak.push(socketToVoice[clientsArr[id%clientsArr.length]]);
+
 	}
 	//console.log(sender);
 	return tempSender;
@@ -363,8 +374,9 @@ function getTaketurnSender(clientsArr, sender, id) {
 
 function getSender(clientsArr, sender) {
 	clientsArr.forEach((e) => {
-		//console.log(`send to ${e}`);
+		// console.log(`send to ${e}, `);
 		sender = sender.to(e);
+		if (emitInfo.mode.type == 'speak') emitInfo.nowSpeak.push(socketToVoice[e]);
 	});
 	return sender;
 }
