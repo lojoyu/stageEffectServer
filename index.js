@@ -20,7 +20,9 @@ var emitInfo = {
 	taketurnId: -1,
 	reverse: 1,
 	sortArray: [],
-	timeout: null
+	timeout: null,
+	timeoutdelay: 500,
+	timeoutspeed: 150,
 }
 
 var connectIndex = 0;
@@ -173,7 +175,14 @@ function controllerOnSpeakAdvance(data) {
 
 function controllerOnSpeakConfig(data) {
 	console.log('speak config: ', data);
-	if (data == 'changeVoice') receiver.emit('speakConfig', {mode: 'changeVoice'});
+	if (data.mode == 'changeVoice') receiver.emit('speakConfig', data);
+	if (data.mode == 'changeTimeout') {
+		emitInfo.timeoutspeed = data.speed;
+		emitInfo.timeoutdelay = data.delay;
+	}
+	// if (data.mode == 'showForm') {
+	// 	receiver.emit('speakConfig', );
+	// }
 }
 
 /*********************************/
@@ -260,9 +269,9 @@ function emitSpeak(sender, data) {
 	}
 	sender.emit('speak', data);
 	
-	let ms = data.text.length*100;
+	let ms = data.text.length*emitInfo.timeoutspeed;
 	if (data.rate) ms *= 1/data.rate;
-	ms += 500;
+	ms += emitInfo.timeoutdelay;
 	emitInfo.timeout = setTimeout(()=>{
 		speakTimeout(data.id);
 	}, ms);
