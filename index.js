@@ -21,8 +21,8 @@ var emitInfo = {
 	reverse: 1,
 	sortArray: [],
 	timeout: null,
-	timeoutdelay: 500,
-	timeoutspeed: 150,
+	timeoutdelay: 700,
+	timeoutspeed: 200,
 }
 
 var connectIndex = 0;
@@ -175,11 +175,13 @@ function controllerOnSpeakAdvance(data) {
 
 function controllerOnSpeakConfig(data) {
 	console.log('speak config: ', data);
-	if (data.mode == 'changeVoice') receiver.emit('speakConfig', data);
 	if (data.mode == 'changeTimeout') {
 		emitInfo.timeoutspeed = data.speed;
 		emitInfo.timeoutdelay = data.delay;
 	}
+	else receiver.emit('speakConfig', data);
+	//if (data.mode == 'changeVoice') receiver.emit('speakConfig', data);
+	
 	// if (data.mode == 'showForm') {
 	// 	receiver.emit('speakConfig', );
 	// }
