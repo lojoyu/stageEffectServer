@@ -27,6 +27,7 @@ var emitInfo = {
 
 var connectIndex = 0;
 var socketToIndex = {};
+var socketToVoice = {};
 var uuidToIndex = {};
 
 //socket.emit: send to self(sender)
@@ -50,6 +51,7 @@ receiver.on('connection', (socket, req) => {
     	console.log(`${socket.id} disconnect!`);
 	});
    
+	socket.on('speakConfig', (data)=>{receiverOnSpeakConfig(data, socket.id)});
    	socket.on('speakOver', receiverOnSpeakover);
 
 	socket.on('debug', (data) => {
@@ -108,7 +110,7 @@ controller.on('connection', (socket) => {
 
 	socket.on('speak', controllerOnSpeak);
 	socket.on('speakAdvance', controllerOnSpeakAdvance);
-	socket.on('speakConfig', controllerOnSpeakConfig);
+	socket.on('speakConfig', (data)=>{controllerOnSpeakConfig(data, socket)});
 
 	// socket.on('debug', (data)=>{
 	// 	controller.emit('debug', data);
@@ -173,11 +175,14 @@ function controllerOnSpeakAdvance(data) {
 	emitInfo.taketurnId = 1;
 }
 
-function controllerOnSpeakConfig(data) {
+function controllerOnSpeakConfig(data, socket) {
 	console.log('speak config: ', data);
 	if (data.mode == 'changeTimeout') {
 		emitInfo.timeoutspeed = data.speed;
 		emitInfo.timeoutdelay = data.delay;
+	}
+	else if (data.mode == 'showUser') {
+		socket.emit('showUser', socketToVoice);
 	}
 	else receiver.emit('speakConfig', data);
 	//if (data.mode == 'changeVoice') receiver.emit('speakConfig', data);
@@ -203,6 +208,12 @@ function receiverOnSpeakover (data) {
 	}
 	nextSpeak();
 	
+}
+
+function receiverOnSpeakConfig(data, socketId) {
+	if (data.mode == 'changeVoice') {
+		socketToVoice[socketId] = data.voice;
+	}
 }
 
 /*********************************/
