@@ -260,7 +260,7 @@ function emitSpeak(sender, data) {
 	}
 	sender.emit('speak', data);
 	
-	let ms = data.text.length*500;
+	let ms = data.text.length*100;
 	if (data.rate) ms *= 1/data.rate;
 	ms += 500;
 	emitInfo.timeout = setTimeout(()=>{
