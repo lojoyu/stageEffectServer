@@ -1,12 +1,19 @@
 const http = require('http');
-const socketio = require('socket.io');
+//const socketio = require('socket.io');
+const Server = require('socket.io').Server;
+
 const port = process.env.PORT || 8000
 
-const server = http.createServer((req, res) => {
-    //res.end("")
-    //res.sendFile(__dirname + '/index.html');
-});
-const io = socketio(server);
+const server = http.createServer();
+//const io = socketio(server);
+const io = new Server(server, {
+	cors: {
+	  origin: 'http://localhost:5173',  // 本地 Vite dev server
+	  methods: ['GET', 'POST'],
+	  credentials: true                // 如果要帶 cookie／授權 header
+	}
+  });
+  
 const receiver = io.of('/receiver');
 const controller = io.of('/controller');
 const user = io.of('/user');
@@ -72,7 +79,7 @@ controller.on('connection', (socket) => {
 	controller.emit('debug', 'welcome!');
 
 	socket.on('controlData', (data) => {
-		//console.log(data.light);
+		console.log(data.light);
 		// check for mode
 		if (!mode in data) {
 			socket.emit('debug', "ERROR: control data don't have mode!");
@@ -132,7 +139,11 @@ function controllerOnSpeak(data) {
 	emitInfo.waitforNum = 1;
 	//TODO: to allot sentence
 	emitInfo.sortArray = getPercentageClients(1);
+	console.log(emitInfo.sortArray);
 	let sender = getTaketurnSender(emitInfo.sortArray, receiver, 0);
+
+	//TOCHECK: 這裡 sender 用 getTaketurn 會壞掉？
+	//let sender = receiver;
 	if (0 < emitInfo.data.sentences.length) {
 		console.log('emit speak', emitInfo.data.sentences[0]);
 		let data = {
@@ -286,7 +297,9 @@ function emitSpeak(sender, data) {
 		clearTimeout(emitInfo.timeout);
 	}
 	sender.emit('speak', data);
-	console.log(emitInfo.nowSpeak);
+	console.log(data, emitInfo.nowSpeak);
+	return;
+	
 	receiver.emit('speakConfig', {mode: 'nowSpeak', data: emitInfo.nowSpeak});
 	controller.emit('speakConfig', {mode: 'nowSpeak', data: emitInfo.nowSpeak});
 
@@ -435,11 +448,17 @@ function getClientsByOrder(order) {
 }
 
 function getReceiverClients() {
-	var receiverClients = [];
-	Object.keys(receiver.adapter.sids).forEach(function(key) {
-	    receiverClients.push(key);
-	});
-	return receiverClients;
+	// var receiverClients = [];
+	// Object.keys(receiver.adapter.sids).forEach(function(key) {
+	//     receiverClients.push(key);
+	// });
+	// return receiverClients;
+
+	const socketsMap = receiver.sockets;
+    if (socketsMap instanceof Map) {
+        return Array.from(socketsMap.keys());
+    }
+    return [];
 }
 
 function indexsort(a, b) {
