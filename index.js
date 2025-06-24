@@ -41,9 +41,9 @@ var uuidToIndex = {};
 //socket.broadcast.emit: send to others in same namespace
 //receiver.emit(namespace.emit): send to all
 
-receiver.on('connection', (socket, req) => {
+receiver.on('connection', (socket) => {
 	socket.on('connected', ({uuid}) => {
-		console.log(`${socket.id} connected`);
+		console.log(`${socket.id} connected!!!!`);
 		if (!(uuid in uuidToIndex)) {
 			//uuidToIndex[uuid] = connectIndex++;
 			uuidToIndex[uuid] = Date.now();
