@@ -16,6 +16,7 @@ const {
 let clientMgr;
 let receiverNs;
 let controllerNs;
+let speakTimeoutId = null; // 移至 speakHandler 內部管理
 
 /**
  * Initializes the SpeakHandler with dependencies.
@@ -150,10 +151,9 @@ function handleControllerInitiateSpeakAdvance(dataPayload, requestingSocket) {
  * @private
  */
 function _emitSpeakToClients(targetClientIds, sentenceIdx) {
-    const currentSpeakState = stateManager.getSpeakState();
-    if (currentSpeakState.speakTimeoutId) {
-        clearTimeout(currentSpeakState.speakTimeoutId);
-        stateManager.updateSpeakState({ speakTimeoutId: null });
+    const currentSpeakState = stateManager.getSpeakState(); // 仍然需要獲取其他狀態
+    if (speakTimeoutId) { // 使用內部變數
+        clearTimeout(speakTimeoutId);
     }
 
     const textToSpeak = currentSpeakState.sentences[sentenceIdx];
@@ -202,8 +202,8 @@ function _emitSpeakToClients(targetClientIds, sentenceIdx) {
     const newTimeoutId = setTimeout(() => {
         _handleSpeakTimeout(currentSpeakState.speakTurnId);
     }, timeoutMs);
-    stateManager.updateSpeakState({ speakTimeoutId: newTimeoutId });
-    console.log(`[SpeakHandler] Speak timeout set for ${timeoutMs}ms (TurnID: ${currentSpeakState.speakTurnId})`);
+    speakTimeoutId = newTimeoutId; // 更新內部變數
+    console.log(`[SpeakHandler] Speak timeout set for ${timeoutMs}ms (TurnID: ${currentSpeakState.speakTurnId}, Timeout ID: ${newTimeoutId})`);
 }
 
 /**
@@ -230,12 +230,11 @@ function handleReceiverSpeakOver(socketId, ackData) {
     stateManager.updateSpeakState({ expectedAcks: newExpectedAcks });
     console.log(`[SpeakHandler] TurnID ${ackData.id}: Expected ACKs remaining: ${newExpectedAcks}`);
 
-
     if (newExpectedAcks <= 0) {
-        if (currentSpeakState.speakTimeoutId) {
-            clearTimeout(currentSpeakState.speakTimeoutId);
-            stateManager.updateSpeakState({ speakTimeoutId: null });
-            console.log(`[SpeakHandler] TurnID ${ackData.id}: All ACKs received, cleared timeout.`);
+        // Check and clear the local speakTimeoutId, not from state
+        if (speakTimeoutId) {
+            clearTimeout(speakTimeoutId); // 使用內部變數
+            console.log(`[SpeakHandler] TurnID ${ackData.id}: All ACKs received, cleared timeout (Timeout ID: ${speakTimeoutId}).`);
         }
         _proceedToNextSpeakSegment();
     }
@@ -251,8 +250,11 @@ function _handleSpeakTimeout(timedOutTurnId) {
     console.warn(`[SpeakHandler] Speak timeout for TurnID: ${timedOutTurnId}. Current TurnID: ${currentSpeakState.speakTurnId}`);
 
     if (timedOutTurnId === currentSpeakState.speakTurnId) {
-        stateManager.updateSpeakState({
-            speakTimeoutId: null,
+        if (speakTimeoutId) { // 使用內部變數
+            clearTimeout(speakTimeoutId);
+            speakTimeoutId = null;
+        }
+        stateManager.updateSpeakState({ // 其他狀態仍然需要更新
             expectedAcks: 0 // Force proceed by setting acks to 0
         });
         console.log(`[SpeakHandler] TurnID ${timedOutTurnId}: Timeout triggered. Proceeding to next segment.`);

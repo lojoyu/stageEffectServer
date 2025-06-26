@@ -8,6 +8,7 @@ const {
 // Define the initial state structure
 let state = {
     controlState: {
+        loopIntervalId: null, // Stores setInterval ID
         intervalTimeMs: 0,    // Interval for emitting control data
         currentDataPayload: {}, // The data object to be emitted
         isLoopActive: false,  // Boolean //TODO: check if this is needed, or can be derived from intervalTimeMs > 0
@@ -108,6 +109,8 @@ const getClientSortConfig = () => {
  */
 const updateControlState = (partialUpdate) => {
     state.controlState = { ...state.controlState, ...partialUpdate };
+    // Update isLoopActive based on intervalTimeMs
+    state.controlState.isLoopActive = state.controlState.intervalTimeMs > 0;
     // console.log('Control state updated:', state.controlState); // Optional: for debugging
 };
 
