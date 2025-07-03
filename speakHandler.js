@@ -293,6 +293,7 @@ function _proceedToNextSpeakSegment() {
         if (!targetClients || targetClients.length === 0) {
             console.warn('[SpeakHandler] No target clients for next speak segment. Ending speak session.');
             if (controllerNs) controllerNs.emit(EVENT_SPEAK_OVER_ALL, { message: 'Speak ended: No clients for next segment.', turnId: currentSpeakState.speakTurnId });
+            if (receiverNs) receiverNs.emit(EVENT_SPEAK_OVER_ALL);
             stateManager.resetSpeakState();
             return;
         }
@@ -305,6 +306,7 @@ function _proceedToNextSpeakSegment() {
     } else {
         console.log('[SpeakHandler] All sentences spoken.');
         if (controllerNs) controllerNs.emit(EVENT_SPEAK_OVER_ALL, { message: 'All sentences spoken.', turnId: currentSpeakState.speakTurnId });
+        if (receiverNs) receiverNs.emit(EVENT_SPEAK_OVER_ALL);
         stateManager.resetSpeakState();
     }
 }
