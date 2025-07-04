@@ -42,7 +42,9 @@ let state = {
  */
 const getControlState = () => {
     // Return a deep copy to prevent external modification
-    return JSON.parse(JSON.stringify(state.controlState));
+    //return JSON.parse(JSON.stringify(state.controlState));
+    return { ...state.controlState };
+
 };
 
 /**
@@ -51,7 +53,8 @@ const getControlState = () => {
  */
 const getSpeakState = () => {
      // Return a deep copy to prevent external modification
-    return JSON.parse(JSON.stringify(state.speakState));
+    //return JSON.parse(JSON.stringify(state.speakState));
+    return { ...state.speakState };
 };
 
 /**
@@ -60,7 +63,8 @@ const getSpeakState = () => {
  */
 const getClientRegistry = () => {
      // Return a deep copy to prevent external modification
-    return JSON.parse(JSON.stringify(state.clientRegistry));
+    // return JSON.parse(JSON.stringify(state.clientRegistry));
+    return { ...state.clientRegistry };
 };
 
 /**
