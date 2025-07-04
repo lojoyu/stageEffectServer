@@ -10,11 +10,11 @@ const connectionManager = require('./connectionManager');
 
 const server = http.createServer();
 const io = new Server(server, {
-	// cors: {
-	//   origin: constants.CORS_ORIGIN,
-	//   methods: ['GET', 'POST'],
-	//   credentials: true
-	// },
+	cors: {
+	  origin: constants.CORS_ORIGIN,
+	  methods: ['GET', 'POST'],
+	  credentials: true
+	},
   });
 
 // Define Socket.IO namespaces

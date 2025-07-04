@@ -1,6 +1,7 @@
 // Server Configuration
 const PORT = process.env.PORT || 8000;
-const CORS_ORIGIN = 'http://localhost:5173'; // Or your specific frontend origin
+const CORS_ORIGIN = '*';
+//const CORS_ORIGIN = 'http://localhost:5173'; // Or your specific frontend origin
 
 // Event Names
 const EVENT_CONTROL_DATA = 'controlData';
