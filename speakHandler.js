@@ -10,6 +10,7 @@ const {
     SPEAK_CONFIG_NOW_SPEAK,
     SPEAK_CONFIG_CHANGE_TIMEOUT,
     SPEAK_CONFIG_SHOW_USER,
+    SPEAK_CONFIG_STOP_SPEAK,
     // EVENT_DEBUG, // If needed for emitting debug messages
 } = require('./constants');
 
@@ -32,91 +33,33 @@ function initialize(clientManagerInstance, recNs, ctrlNs) {
     console.log('SpeakHandler initialized.');
 }
 
-/**
- * Handles simple speak requests from the controller.
- * @param {string} textPayload - The text to be spoken.
- * @param {object} requestingSocket - The controller socket that made the request.
- */
-function handleControllerInitiateSpeak(textPayload, requestingSocket) {
+function _initiateSpeakSequence(payload, requestingSocket) {
     if (!clientMgr) {
         console.error('[SpeakHandler] ClientManager not initialized.');
         return;
     }
-    if (typeof textPayload !== 'string') {
-        console.warn('[SpeakHandler] Invalid textPayload for speak:', textPayload);
-        //TODO: Max need to add error check
-        if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { error: 'Speak command requires a string payload.'});
+    if (!payload || typeof payload.text !== 'string') {
+        console.warn('[SpeakHandler] Invalid payload for speak:', payload);
+        if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { error: 'Speak command requires a payload with a text property.' });
         return;
     }
 
-    const sentences = utils.txtToSentence(textPayload);
+    const sentences = utils.txtToSentence(payload.text);
     if (!sentences || sentences.length === 0 || sentences[0] === '') {
-        console.warn('[SpeakHandler] No valid sentences to speak from payload:', textPayload);
+        console.warn('[SpeakHandler] No valid sentences to speak from payload:', payload.text);
         if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { error: 'No valid sentences found in text.'});
         return;
     }
 
-    const speakTurnId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    stateManager.updateSpeakState({
-        sentences,
-        currentSentenceIndex: 0,
-        targetClientPercentage: 0, // Single speaker mode
-        rate: stateManager.getSpeakState().rate, // Preserve existing global rate if any
-        pitch: stateManager.getSpeakState().pitch, // Preserve existing global pitch if any
-        speakTurnId: speakTurnId,
-        expectedAcks: 1, // Expect one ack for single speaker mode per sentence
-        activeSpeakingClientsInfo: [],
-        clientsInCurrentSpeakRound: [],
-    });
-
-    // For simple speak, target is usually the "next" in a sequence or a default
-    const targetClients = clientMgr.getSpeakTargets({
-        type: 'single',
-        turnIndex: 0, // For the first sentence, could be a more complex turn logic
-    });
-
-    if (!targetClients || targetClients.length === 0) {
-        console.warn('[SpeakHandler] No target clients found for simple speak.');
-        if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { error: 'No clients available to speak.'});
-        stateManager.resetSpeakState();
-        return;
-    }
-    stateManager.updateSpeakState({ clientsInCurrentSpeakRound: targetClients, expectedAcks: targetClients.length });
-    _emitSpeakToClients(targetClients, 0);
-}
-
-/**
- * Handles advanced speak requests from the controller (with percentage, rate, pitch).
- * @param {object} dataPayload - Object containing text, percentage, rate, pitch.
- * @param {object} requestingSocket - The controller socket that made the request.
- */
-function handleControllerInitiateSpeakAdvance(dataPayload, requestingSocket) {
-    if (!clientMgr) {
-        console.error('[SpeakHandler] ClientManager not initialized.');
-        return;
-    }
-    if (!dataPayload || typeof dataPayload.text !== 'string') {
-        console.warn('[SpeakHandler] Invalid dataPayload for speakAdvance:', dataPayload);
-        if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { error: 'SpeakAdvance requires a text property.'});
-        return;
-    }
-
-    const sentences = utils.txtToSentence(dataPayload.text);
-     if (!sentences || sentences.length === 0 || sentences[0] === '') {
-        console.warn('[SpeakHandler] No valid sentences to speak from payload:', dataPayload.text);
-        if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { error: 'No valid sentences found in text.'});
-        return;
-    }
-
-    const percentage = parseFloat(dataPayload.percentage) || 0;
+    const percentage = parseFloat(payload.percentage) || 0;
     const speakTurnId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
     stateManager.updateSpeakState({
         sentences,
         currentSentenceIndex: 0,
         targetClientPercentage: percentage,
-        rate: dataPayload.rate, // Can be undefined, _emitSpeakToClients will handle
-        pitch: dataPayload.pitch, // Can be undefined
+        rate: payload.rate, // Can be undefined, _emitSpeakToClients will handle
+        pitch: payload.pitch, // Can be undefined
         speakTurnId: speakTurnId,
         expectedAcks: 0, // Will be set after getting targets
         activeSpeakingClientsInfo: [],
@@ -126,12 +69,11 @@ function handleControllerInitiateSpeakAdvance(dataPayload, requestingSocket) {
     const targetClients = clientMgr.getSpeakTargets({
         type: percentage > 0 && percentage <= 1 ? 'percentage' : 'single', // if percentage is invalid, treat as single
         percentage: percentage,
-        // sortArray: dataPayload.sortArray, // If clientManager supports custom sort for speak targets
         turnIndex: 0, // For first sentence
     });
 
     if (!targetClients || targetClients.length === 0) {
-        console.warn('[SpeakHandler] No target clients found for speakAdvance.');
+        console.warn('[SpeakHandler] No target clients found for speak.');
         if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { error: 'No clients available to speak.'});
         stateManager.resetSpeakState();
         return;
@@ -142,6 +84,33 @@ function handleControllerInitiateSpeakAdvance(dataPayload, requestingSocket) {
         clientsInCurrentSpeakRound: targetClients
     });
     _emitSpeakToClients(targetClients, 0);
+}
+
+/**
+ * Handles simple speak requests from the controller.
+ * @param {object | string} payload - The payload, expected to be an object with a `text` property, or just the text string itself.
+ * @param {object} requestingSocket - The controller socket that made the request.
+ */
+function handleControllerInitiateSpeak(payload, requestingSocket) {
+    let speakPayload;
+    // The simple 'speak' event might just send a string, as in the original implementation.
+    // We normalize it to the object structure that _initiateSpeakSequence expects.
+    if (typeof payload === 'string') {
+        speakPayload = { text: payload };
+    } else if (typeof payload === 'object' && payload !== null) {
+        // It could also be an object like { text: "..." }
+        speakPayload = payload;
+    }
+    _initiateSpeakSequence(speakPayload, requestingSocket);
+}
+
+/**
+ * Handles advanced speak requests from the controller (with percentage, rate, pitch).
+ * @param {object} dataPayload - Object containing text, percentage, rate, pitch.
+ * @param {object} requestingSocket - The controller socket that made the request.
+ */
+function handleControllerInitiateSpeakAdvance(dataPayload, requestingSocket) {
+    _initiateSpeakSequence(dataPayload, requestingSocket);
 }
 
 /**
@@ -350,6 +319,19 @@ function handleControllerSpeakConfig(configData, requestingSocket) {
                 receiverNs.emit(EVENT_SPEAK_CONFIG, configData); // Broadcast to all receivers
                 if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: configData.mode, message: 'Config broadcasted to receivers.' });
              }
+            break;
+        case SPEAK_CONFIG_STOP_SPEAK:
+            console.log('[SpeakHandler] Stop speak command received. Clearing state and notifying clients.');
+            // Clear any pending timeout
+            if (speakTimeoutId) {
+                clearTimeout(speakTimeoutId);
+                speakTimeoutId = null;
+            }
+            // Reset server-side state
+            stateManager.resetSpeakState();
+            // Command all receivers to stop speaking immediately. The receiver client should implement: window.speechSynthesis.cancel()
+            if (receiverNs) receiverNs.emit(EVENT_SPEAK_CONFIG, { mode: 'stop' });
+            if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: configData.mode, message: 'Speak sequence stopped.' });
             break;
         default:
             // If it's a config meant for receivers but initiated by controller

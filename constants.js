@@ -26,6 +26,7 @@ const SPEAK_CONFIG_CHANGE_VOICE = 'changeVoice';    // Receiver changes its voic
 const SPEAK_CONFIG_NOW_SPEAK = 'nowSpeak';        // Server informs who is currently speaking
 const SPEAK_CONFIG_CHANGE_TIMEOUT = 'changeTimeout';// Controller changes speak timeout parameters
 const SPEAK_CONFIG_SHOW_USER = 'showUser';        // Controller requests user voice preferences
+const SPEAK_CONFIG_STOP_SPEAK = 'stopSpeak';      // Controller requests to stop all current speech
 
 // Default Speak Timeout Values (can be overridden by SPEAK_CONFIG_CHANGE_TIMEOUT)
 const SPEAK_TIMEOUT_DEFAULT_DELAY_MS = 700;
@@ -60,6 +61,7 @@ module.exports = {
     SPEAK_CONFIG_NOW_SPEAK,
     SPEAK_CONFIG_CHANGE_TIMEOUT,
     SPEAK_CONFIG_SHOW_USER,
+    SPEAK_CONFIG_STOP_SPEAK,
 
     // Default Values
     SPEAK_TIMEOUT_DEFAULT_DELAY_MS,

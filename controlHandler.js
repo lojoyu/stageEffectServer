@@ -9,6 +9,7 @@ const {
 
 let receiverNs;
 let clientMgr; // This will be the initialized clientManager instance
+let controlLoopId = null;
 
 /**
  * Initializes the ControlHandler with dependencies.
@@ -40,16 +41,24 @@ function processControlData(data, requestingSocket) {
     const { mode, ...payload } = data; // Separate mode from the rest of the payload
     const intervalTimeMs = parseInt(mode.interval, 10) || 0;
 
+    const currentState = stateManager.getControlState();
+    const newModeFromController = mode;
+
+    // Start with the existing mode, then merge new properties from the controller.
+    // This preserves properties like takeTurnIndex unless overwritten.
+    const nextMode = { ...currentState.currentMode, ...newModeFromController };
+
+    // IMPORTANT: Reset the takeTurnIndex only if the mode is changing TO taketurn
+    // or if the new mode is not taketurn at all.
+    if (newModeFromController.type !== MODE_TAKETURN || currentState.currentMode.type !== MODE_TAKETURN) {
+        nextMode.takeTurnIndex = 0;
+    }
+
     // Update stateManager with the new control parameters
     stateManager.updateControlState({
         currentDataPayload: payload,
         intervalTimeMs: intervalTimeMs,
-        currentMode: {
-            type: mode.type || MODE_NORMAL,
-            percentage: parseFloat(mode.percentage) || 0,
-            order: mode.order, // For taketurn or specific ordering
-            takeTurnIndex: mode.type === MODE_TAKETURN ? stateManager.getControlState().currentMode.takeTurnIndex || 0 : 0, // Preserve or reset takeTurnIndex
-        },
+        currentMode: nextMode,
         isLoopActive: intervalTimeMs > 0,
     });
 
@@ -71,23 +80,22 @@ function processControlData(data, requestingSocket) {
  * Clears any existing loop and starts a new one if intervalTimeMs > 0.
  */
 function managedControlLoop() {
-    clearManagedControlLoop(); // Clear existing interval before starting a new one
+    clearManagedControlLoop();
 
-    const controlState = stateManager.getControlState();
-    if (controlState.intervalTimeMs > 0 && controlState.isLoopActive) {
+    const { intervalTimeMs, isLoopActive } = stateManager.getControlState();
+    if (intervalTimeMs > 0 && isLoopActive) {
         emitControlDataToReceivers(); // Emit immediately once
-        const loopId = setInterval(() => {
+        controlLoopId = setInterval(() => {
             // Check if the loop should still be active before emitting
             // This allows 'pause' or other actions to stop the interval's effect
             const currentControlState = stateManager.getControlState();
             if (currentControlState.isLoopActive && currentControlState.intervalTimeMs > 0) {
                 emitControlDataToReceivers();
             } else {
-                clearManagedControlLoop(); // Stop if state changed
+                clearManagedControlLoop();
             }
-        }, controlState.intervalTimeMs);
-        stateManager.updateControlState({ loopIntervalId: loopId });
-        console.log(`[ControlHandler] Control loop started with interval: ${controlState.intervalTimeMs}ms, ID: ${loopId}`);
+        }, intervalTimeMs);
+        console.log(`[ControlHandler] Control loop started with interval: ${intervalTimeMs}ms, ID: ${controlLoopId}`);
     } else {
         // This case should ideally be handled by processControlData setting intervalTimeMs to 0
         // or handlePause setting isLoopActive to false.
@@ -100,10 +108,9 @@ function managedControlLoop() {
  * Clears the managed control loop interval.
  */
 function clearManagedControlLoop() {
-    const controlState = stateManager.getControlState();
-    if (controlState.loopIntervalId !== null) {
-        clearInterval(controlState.loopIntervalId);
-        stateManager.updateControlState({ loopIntervalId: null });
+    if (controlLoopId !== null) {
+        clearInterval(controlLoopId);
+        controlLoopId = null;
         console.log('[ControlHandler] Control loop cleared.');
     }
 }
