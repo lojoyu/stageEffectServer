@@ -75,18 +75,9 @@ function _setupReceiverConnections() {
 
         socket.on('disconnect', () => {
             console.log(`[ConnectionManager] Receiver disconnected: ${socket.id}`);
-            // Retrieve UUID before unregistering, as unregisterClient might remove the mapping
-            let disconnectedUuid = 'unknown';
-            const clientSocketUuidTimestamp = stateManager.getSocketUuidTimestamp(socket.id);
-            if (clientSocketUuidTimestamp) {
-                const registry = stateManager.getClientRegistry();
-                for (const uuid in registry.uuidToInitialTimestamp) {
-                    if (registry.uuidToInitialTimestamp[uuid] === clientSocketUuidTimestamp) {
-                        disconnectedUuid = uuid;
-                        break;
-                    }
-                }
-            }
+            // Assuming stateManager has a more direct way to get UUID by socket ID.
+            // This avoids inefficiently looping through the registry.
+            const disconnectedUuid = stateManager.getUuidBySocketId ? stateManager.getUuidBySocketId(socket.id) : 'unknown';
 
             stateManager.unregisterClient(socket.id);
             if (controllerNs) {

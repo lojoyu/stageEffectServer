@@ -8,6 +8,7 @@ const {
     EVENT_SPEAK_CONFIG,
     SPEAK_CONFIG_CHANGE_VOICE,
     SPEAK_CONFIG_NOW_SPEAK,
+    SPEAK_CONFIG_ASSIGN_VOICE,
     SPEAK_CONFIG_CHANGE_TIMEOUT,
     SPEAK_CONFIG_SHOW_USER,
     SPEAK_CONFIG_STOP_SPEAK,
@@ -294,6 +295,41 @@ function handleControllerSpeakConfig(configData, requestingSocket) {
     console.log('[SpeakHandler] Controller speakConfig:', configData);
 
     switch (configData.mode) {
+        case SPEAK_CONFIG_ASSIGN_VOICE:
+            const { socketId, voice, lang } = configData; // socketId is now optional
+            if (!voice && !lang) {
+                if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { error: true, mode: configData.mode, message: '`voice` or `lang` is required for assignVoice.' });
+                break;
+            }
+
+            // The data to be sent to the receiver and stored in the state.
+            const voiceConfigPayload = { mode: SPEAK_CONFIG_CHANGE_VOICE };
+            if (voice) voiceConfigPayload.voice = voice;
+            if (lang) voiceConfigPayload.lang = lang;
+
+            const voicePreference = {};
+            if (voice) voicePreference.voice = voice;
+            if (lang) voicePreference.lang = lang;
+
+            if (socketId) {
+                // Assign to a single, specific client
+                stateManager.setClientVoice(socketId, voicePreference);
+                if (receiverNs) receiverNs.to(socketId).emit(EVENT_SPEAK_CONFIG, voiceConfigPayload);
+                if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: configData.mode, message: `Voice config assigned to specific client ${socketId}.` });
+            } else {
+                // If no socketId, assign to all connected clients
+                const allClientIds = clientMgr.getConnectedReceiverSocketIds();
+                allClientIds.forEach(id => {
+                    stateManager.setClientVoice(id, voicePreference);
+                });
+
+                if (receiverNs) {
+                    // Broadcast the change to all receivers
+                    receiverNs.emit(EVENT_SPEAK_CONFIG, voiceConfigPayload);
+                }
+                if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: configData.mode, message: `Voice config assigned to all ${allClientIds.length} clients.` });
+            }
+            break;
         case SPEAK_CONFIG_CHANGE_TIMEOUT:
             if (typeof configData.delay === 'number' && typeof configData.speed === 'number') {
                 stateManager.updateSpeakState({

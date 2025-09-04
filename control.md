@@ -125,9 +125,18 @@
           "voice": "新的預設語音名稱"
         }
         ```
+    -   **指定接收端的語音**:
+        ```json
+        {
+          "mode": "assignVoice",
+          "socketId": "a_specific_receiver_socket_id", // (可選) 如果省略，則會應用於所有接收端
+          "voice": "要指定的語音名稱或物件"
+        }
+        ```
 -   **伺服器行為**:
     -   `changeTimeout`: 更新伺服器內部計算語音播放超時的參數。
     -   `showUser`: 伺服器會將 `socketToVoice`（記錄了各接收端選擇的語音）回傳給發送請求的控制端。
+    -   `assignVoice`: 如果提供 `socketId`，伺服器會更新內部狀態，記錄指定接收端的語音偏好，並單獨向該接收端發送 `changeVoice` 指令。如果省略 `socketId`，伺服器會更新所有已連接接收端的語音偏好，並廣播 `changeVoice` 指令給所有接收端。
     -   其他 `mode`: 伺服器會將該 `speakConfig` 指令廣播給所有 `/receiver` 命名空間下的接收端。
 
 ### 6. `pause` (目前功能有限)

@@ -29,6 +29,7 @@ let state = {
     clientRegistry: {
         socketToUuidTimestamp: {}, // Maps socket.id to the timestamp of its uuid's first connection (this session)
         uuidToInitialTimestamp: {}, // Maps uuid to its very first connection timestamp (across sessions, if persistent storage were used, but here just first seen)
+        socketToUuid: {},          // Maps socket.id directly to its uuid for efficient lookups
         socketToVoicePreference: {}, // Maps socket.id to selected voice
         clientSortConfig: { orderDefinition: null, reverse: false }, // Replaces emitInfo.sortArray and emitInfo.reverse for general client sorting
     },
@@ -95,6 +96,15 @@ const getSocketUuidTimestamp = (socketId) => {
 };
 
 /**
+ * Get the UUID for a given socket ID.
+ * @param {string} socketId - The ID of the socket.
+ * @returns {string | undefined} The UUID or undefined if not registered.
+ */
+const getUuidBySocketId = (socketId) => {
+    return state.clientRegistry.socketToUuid[socketId];
+};
+
+/**
  * Get the current client sorting configuration.
  * @returns {object} The client sort configuration.
  */
@@ -157,6 +167,7 @@ const registerClient = (socketId, uuid) => {
     }
     // Record the timestamp for this specific socket connection
     state.clientRegistry.socketToUuidTimestamp[socketId] = state.clientRegistry.uuidToInitialTimestamp[uuid];
+    state.clientRegistry.socketToUuid[socketId] = uuid; // Add direct mapping for efficiency
     // Initialize voice preference if not exists (or set a default)
     if (!(socketId in state.clientRegistry.socketToVoicePreference)) {
          state.clientRegistry.socketToVoicePreference[socketId] = 'default'; // Or some default voice identifier
@@ -173,6 +184,7 @@ const unregisterClient = (socketId) => {
     // Note: We don't remove the uuidToInitialTimestamp as it tracks the first seen time
     //TODO: Make sure we don't need to remove.
     delete state.clientRegistry.socketToUuidTimestamp[socketId];
+    delete state.clientRegistry.socketToUuid[socketId];
     delete state.clientRegistry.socketToVoicePreference[socketId]; // Remove voice preference for this disconnected socket
     console.log(`Client unregistered: socketId=${socketId}`); // Optional: for debugging
     // console.log('Client Registry:', state.clientRegistry); // Optional: for debugging
@@ -220,6 +232,7 @@ module.exports = {
     getClientVoice,
     getUuidTimestamp,
     getSocketUuidTimestamp,
+    getUuidBySocketId,
     setClientSortConfig,
     getClientSortConfig,
 };
