@@ -20,6 +20,10 @@ let receiverNs;
 let controllerNs;
 let speakTimeoutId = null; // 移至 speakHandler 內部管理
 
+// --- Speak Queue ---
+// A queue for 'wait' and 'append' jobs.
+let speakQueue = [];
+
 /**
  * Initializes the SpeakHandler with dependencies.
  * @param {object} clientManagerInstance - Initialized instance of ClientManager.
@@ -45,12 +49,19 @@ function _initiateSpeakSequence(payload, requestingSocket) {
         return;
     }
 
-    const sentences = utils.txtToSentence(payload.text);
-    if (!sentences || sentences.length === 0 || sentences[0] === '') {
+    const sentenceStrings = utils.txtToSentence(payload.text);
+    if (!sentenceStrings || sentenceStrings.length === 0 || sentenceStrings[0] === '') {
         console.warn('[SpeakHandler] No valid sentences to speak from payload:', payload.text);
         if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { error: 'No valid sentences found in text.'});
         return;
     }
+
+    // Convert sentence strings to sentence objects, each with its own parameters.
+    const sentences = sentenceStrings.map(s => ({
+        text: s,
+        rate: payload.rate, // Can be undefined, _emitSpeakToClients will handle defaults
+        pitch: payload.pitch,
+    }));
 
     const percentage = parseFloat(payload.percentage) || 0;
     const speakTurnId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -59,8 +70,6 @@ function _initiateSpeakSequence(payload, requestingSocket) {
         sentences,
         currentSentenceIndex: 0,
         targetClientPercentage: percentage,
-        rate: payload.rate, // Can be undefined, _emitSpeakToClients will handle
-        pitch: payload.pitch, // Can be undefined
         speakTurnId: speakTurnId,
         expectedAcks: 0, // Will be set after getting targets
         activeSpeakingClientsInfo: [],
@@ -111,7 +120,64 @@ function handleControllerInitiateSpeak(payload, requestingSocket) {
  * @param {object} requestingSocket - The controller socket that made the request.
  */
 function handleControllerInitiateSpeakAdvance(dataPayload, requestingSocket) {
-    _initiateSpeakSequence(dataPayload, requestingSocket);
+    const queueing = dataPayload.queueing || 'interrupt'; // Default to interrupt
+    const currentSpeakState = stateManager.getSpeakState();
+    const isSpeaking = currentSpeakState.speakTurnId !== null;
+
+    // 1. INTERRUPT: Stop everything, clear queue, and start immediately.
+    if (queueing === 'interrupt') {
+        console.log('[SpeakHandler] Received "interrupt" command.');
+        speakQueue = []; // Clear any waiting jobs
+        _stopAllSpeaking(requestingSocket, false); // Stop current speech without notifying controller yet
+
+        // Add a small delay to allow clients to process the 'stop' command before starting the new sequence.
+        // This prevents a race condition where the new 'speak' is cancelled by the 'stop'.
+        setTimeout(() => {
+            _initiateSpeakSequence(dataPayload, requestingSocket);
+        }, 50); // 50ms delay is usually sufficient and not perceptible.
+        return;
+    }
+
+    // If not speaking, 'wait' and 'append' behave like 'interrupt'.
+    if (!isSpeaking) {
+        console.log(`[SpeakHandler] Not currently speaking, command "${queueing}" will start immediately.`);
+        _initiateSpeakSequence(dataPayload, requestingSocket);
+        return;
+    }
+
+    // If currently speaking, handle 'wait' and 'append'.
+    if (queueing === 'append') {
+        console.log('[SpeakHandler] Received "append" command.');
+        const newSentences = utils.txtToSentence(dataPayload.text);
+        if (newSentences && newSentences.length > 0) {
+            // Get the parameters of the last sentence in the current queue to use as a default
+            // for the new sentences if the 'append' command doesn't provide them.
+            const lastSentence = currentSpeakState.sentences.length > 0
+                ? currentSpeakState.sentences[currentSpeakState.sentences.length - 1]
+                : {};
+
+            // Create new sentence objects with their own parameters.
+            const newSentenceObjects = newSentences.map(s => ({
+                text: s,
+                rate: dataPayload.rate !== undefined ? dataPayload.rate : lastSentence.rate,
+                pitch: dataPayload.pitch !== undefined ? dataPayload.pitch : lastSentence.pitch,
+            }));
+
+            const updatedSentences = [...currentSpeakState.sentences, ...newSentenceObjects];
+
+            stateManager.updateSpeakState({ sentences: updatedSentences });
+
+            console.log(`[SpeakHandler] Appended ${newSentences.length} sentences. Total now: ${updatedSentences.length}`);
+            if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: 'append', message: 'Sentences appended with their own parameters.' });
+        }
+    } else if (queueing === 'wait') {
+        console.log('[SpeakHandler] Received "wait" command. Job is queued.');
+        // For 'wait', we discard any other waiting jobs and queue this new one.
+        speakQueue = [{ payload: dataPayload, socket: requestingSocket }];
+        if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: 'wait', message: 'Speak job is queued and will start after the current sentence.' });
+    } else {
+        console.warn(`[SpeakHandler] Unknown queueing mode: ${queueing}`);
+    }
 }
 
 /**
@@ -126,8 +192,8 @@ function _emitSpeakToClients(targetClientIds, sentenceIdx) {
         clearTimeout(speakTimeoutId);
     }
 
-    const textToSpeak = currentSpeakState.sentences[sentenceIdx];
-    if (!textToSpeak) {
+    const sentenceObject = currentSpeakState.sentences[sentenceIdx];
+    if (!sentenceObject || !sentenceObject.text) {
         console.error(`[SpeakHandler] Sentence index ${sentenceIdx} out of bounds.`);
         _proceedToNextSpeakSegment(); // Attempt to recover or end
         return;
@@ -135,9 +201,9 @@ function _emitSpeakToClients(targetClientIds, sentenceIdx) {
 
     const speakPayload = {
         id: currentSpeakState.speakTurnId,
-        text: textToSpeak,
-        rate: currentSpeakState.rate,
-        pitch: currentSpeakState.pitch,
+        text: sentenceObject.text,
+        rate: sentenceObject.rate,
+        pitch: sentenceObject.pitch,
         // voice: client-specific voice could be added here if needed, but usually handled by client
     };
 
@@ -154,7 +220,7 @@ function _emitSpeakToClients(targetClientIds, sentenceIdx) {
         receiverNs.emit(EVENT_SPEAK_CONFIG, nowSpeakPayload);
         if (controllerNs) controllerNs.emit(EVENT_SPEAK_CONFIG, nowSpeakPayload);
 
-        console.log(`[SpeakHandler] Emitted speak (TurnID: ${currentSpeakState.speakTurnId}, Sentence: ${sentenceIdx}) to:`, targetClientIds, speakPayload.text);
+        console.log(`[SpeakHandler] Emitted speak (TurnID: ${currentSpeakState.speakTurnId}, Sentence: ${sentenceIdx}) to:`, targetClientIds, speakPayload);
     } else {
         console.warn('[SpeakHandler] No receiver namespace or target clients to emit speak event.');
         // If no one to speak, try to advance or reset
@@ -163,8 +229,8 @@ function _emitSpeakToClients(targetClientIds, sentenceIdx) {
     }
 
     const timeoutMs = utils.calculateSpeakTimeout(
-        textToSpeak,
-        currentSpeakState.rate,
+        sentenceObject.text,
+        sentenceObject.rate,
         currentSpeakState.timeoutDelayMs,
         currentSpeakState.timeoutSpeedFactor
     );
@@ -239,7 +305,28 @@ function _handleSpeakTimeout(timedOutTurnId) {
  * @private
  */
 function _proceedToNextSpeakSegment() {
-    const currentSpeakState = stateManager.getSpeakState();
+    const currentSpeakState = stateManager.getSpeakState(); // Get state once
+
+    // 優先檢查：佇列中是否有 'wait' 任務在等待。
+    // 如果有，它會中斷當前的任務，並立即開始新任務。
+    if (speakQueue.length > 0) {
+        const nextJob = speakQueue.shift();
+        console.log(`[SpeakHandler] 'wait' job found. Interrupting current job (TurnID: ${currentSpeakState.speakTurnId}) to start new one.`);
+
+        // 通知控制器，前一個任務已被中斷/完成
+        if (controllerNs) {
+            controllerNs.emit(EVENT_SPEAK_OVER_ALL, {
+                message: `Speak job interrupted by a new 'wait' command.`,
+                turnId: currentSpeakState.speakTurnId
+            });
+        }
+
+        // 開始新的語音序列，這個函式會重置相關狀態
+        _initiateSpeakSequence(nextJob.payload, nextJob.socket);
+        return; // 結束此函式，避免執行後續的舊任務邏輯
+    }
+
+    // 如果佇列為空，則繼續執行當前任務的下一句
     const nextSentenceIndex = currentSpeakState.currentSentenceIndex + 1;
 
     console.log(`[SpeakHandler] Proceeding to next speak segment. Next sentence index: ${nextSentenceIndex} of ${currentSpeakState.sentences.length}`);
@@ -247,7 +334,6 @@ function _proceedToNextSpeakSegment() {
     if (nextSentenceIndex < currentSpeakState.sentences.length) {
         const nextSpeakTurnId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         stateManager.updateSpeakState({
-            currentSentenceIndex: nextSentenceIndex,
             speakTurnId: nextSpeakTurnId,
             activeSpeakingClientsInfo: [], // Reset for next segment
             clientsInCurrentSpeakRound: [], // Reset for next segment
@@ -255,6 +341,7 @@ function _proceedToNextSpeakSegment() {
         });
 
         const targetClients = clientMgr.getSpeakTargets({
+            // Use the state that was just updated
             type: currentSpeakState.targetClientPercentage > 0 && currentSpeakState.targetClientPercentage <= 1 ? 'percentage' : 'single',
             percentage: currentSpeakState.targetClientPercentage,
             turnIndex: nextSentenceIndex, // Or a more complex turn logic for multi-sentence
@@ -268,15 +355,16 @@ function _proceedToNextSpeakSegment() {
             return;
         }
         stateManager.updateSpeakState({
+            currentSentenceIndex: nextSentenceIndex, // Update index AFTER getting targets for the correct turnIndex
             expectedAcks: targetClients.length,
             clientsInCurrentSpeakRound: targetClients
         });
         _emitSpeakToClients(targetClients, nextSentenceIndex);
 
     } else {
-        console.log('[SpeakHandler] All sentences spoken.');
+        // 當前任務的所有句子都已播放完畢，且佇列中沒有等待的任務
+        console.log('[SpeakHandler] All sentences and queued jobs are finished.');
         if (controllerNs) controllerNs.emit(EVENT_SPEAK_OVER_ALL, { message: 'All sentences spoken.', turnId: currentSpeakState.speakTurnId });
-        if (receiverNs) receiverNs.emit(EVENT_SPEAK_OVER_ALL);
         stateManager.resetSpeakState();
     }
 }
@@ -285,8 +373,9 @@ function _proceedToNextSpeakSegment() {
  * Handles speak configuration commands from the controller.
  * @param {object} configData - The configuration data.
  * @param {object} requestingSocket - The controller socket.
+ * @param {boolean} [notifyController=true] - Whether to send a confirmation back to the controller.
  */
-function handleControllerSpeakConfig(configData, requestingSocket) {
+function handleControllerSpeakConfig(configData, requestingSocket, notifyController = true) {
     if (!configData || !configData.mode) {
         console.warn('[SpeakHandler] Invalid speakConfig from controller:', configData);
         if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { error: 'Invalid configuration data.'});
@@ -314,15 +403,14 @@ function handleControllerSpeakConfig(configData, requestingSocket) {
             if (socketId) {
                 // Assign to a single, specific client
                 stateManager.setClientVoice(socketId, voicePreference);
-                if (receiverNs) receiverNs.to(socketId).emit(EVENT_SPEAK_CONFIG, voiceConfigPayload);
-                if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: configData.mode, message: `Voice config assigned to specific client ${socketId}.` });
+                if (receiverNs) receiverNs.to(socketId).emit(EVENT_SPEAK_CONFIG, voiceConfigPayload); // Notify receiver
+                if (notifyController && requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: configData.mode, message: `Voice config assigned to specific client ${socketId}.` });
             } else {
                 // If no socketId, assign to all connected clients
                 const allClientIds = clientMgr.getConnectedReceiverSocketIds();
                 allClientIds.forEach(id => {
                     stateManager.setClientVoice(id, voicePreference);
                 });
-
                 if (receiverNs) {
                     // Broadcast the change to all receivers
                     receiverNs.emit(EVENT_SPEAK_CONFIG, voiceConfigPayload);
@@ -336,9 +424,9 @@ function handleControllerSpeakConfig(configData, requestingSocket) {
                     timeoutDelayMs: configData.delay,
                     timeoutSpeedFactor: configData.speed
                 });
-                if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: configData.mode, message: 'Timeout parameters updated.' });
+                if (notifyController && requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: configData.mode, message: 'Timeout parameters updated.' });
             } else {
-                 if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { error: true, mode: configData.mode, message: 'Invalid delay or speed for timeout.' });
+                 if (notifyController && requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { error: true, mode: configData.mode, message: 'Invalid delay or speed for timeout.' });
             }
             break;
         case SPEAK_CONFIG_SHOW_USER:
@@ -353,33 +441,41 @@ function handleControllerSpeakConfig(configData, requestingSocket) {
         case SPEAK_CONFIG_CHANGE_VOICE: // Example: Controller wants to set a default voice for all
              if (receiverNs) {
                 receiverNs.emit(EVENT_SPEAK_CONFIG, configData); // Broadcast to all receivers
-                if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: configData.mode, message: 'Config broadcasted to receivers.' });
+                if (notifyController && requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: configData.mode, message: 'Config broadcasted to receivers.' });
              }
             break;
         case SPEAK_CONFIG_STOP_SPEAK:
-            console.log('[SpeakHandler] Stop speak command received. Clearing state and notifying clients.');
-            // Clear any pending timeout
-            if (speakTimeoutId) {
-                clearTimeout(speakTimeoutId);
-                speakTimeoutId = null;
-            }
-            // Reset server-side state
-            stateManager.resetSpeakState();
-            // Command all receivers to stop speaking immediately. The receiver client should implement: window.speechSynthesis.cancel()
-            if (receiverNs) receiverNs.emit(EVENT_SPEAK_CONFIG, { mode: 'stop' });
-            if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: configData.mode, message: 'Speak sequence stopped.' });
+            _stopAllSpeaking(requestingSocket, notifyController);
             break;
         default:
             // If it's a config meant for receivers but initiated by controller
             if (receiverNs) {
                 receiverNs.emit(EVENT_SPEAK_CONFIG, configData);
                 console.log(`[SpeakHandler] Relaying speakConfig mode '${configData.mode}' to receivers.`);
-                 if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: configData.mode, message: `Config mode ${configData.mode} broadcasted.` });
+                 if (notifyController && requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: configData.mode, message: `Config mode ${configData.mode} broadcasted.` });
             } else {
                 console.warn(`[SpeakHandler] Unhandled speakConfig mode from controller: ${configData.mode} or no receiverNs.`);
-                if (requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { error: true, mode: configData.mode, message: `Unhandled config mode: ${configData.mode}` });
+                if (notifyController && requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { error: true, mode: configData.mode, message: `Unhandled config mode: ${configData.mode}` });
             }
     }
+}
+
+/**
+ * Stops all current and queued speech immediately.
+ * @param {object} requestingSocket - The controller socket that made the request.
+ * @param {boolean} [notifyController=true] - Whether to send a confirmation back to the controller.
+ * @private
+ */
+function _stopAllSpeaking(requestingSocket, notifyController = true) {
+    console.log('[SpeakHandler] Stop speak command received. Clearing state and notifying clients.');
+    if (speakTimeoutId) {
+        clearTimeout(speakTimeoutId);
+        speakTimeoutId = null;
+    }
+    speakQueue = []; // Clear waiting jobs
+    stateManager.resetSpeakState();
+    if (receiverNs) receiverNs.emit(EVENT_SPEAK_CONFIG, { mode: 'stop' }); // Command clients to stop
+    if (notifyController && requestingSocket) requestingSocket.emit(EVENT_SPEAK_CONFIG, { success: true, mode: 'stopSpeak', message: 'All speak sequences stopped.' });
 }
 
 /**

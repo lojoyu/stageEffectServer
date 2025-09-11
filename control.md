@@ -89,7 +89,8 @@
       "pitch": 1.0,      // (可選) 音高 (預設 1.0)
       "volume": 1.0,     // (可選) 音量 (預設 1.0)
       "voice": "Google 普通话（中国大陆）", // (可選) 指定語音，如果接收端支持
-      "sortArray": "asc" | "desc" | "middle" | "random" | Array<Object> // (可選) 選擇接收端時的排序方式
+      "sortArray": "asc" | "desc" | "middle" | "random" | Array<Object>, // (可選) 選擇接收端時的排序方式
+      "queueing": "interrupt" | "wait" | "append" // (可選) 處理新指令的方式，預設為 "interrupt"
     }
     ```
 -   **伺服器行為**:
@@ -97,6 +98,10 @@
     -   伺服器會將 `text` 分割成句子，並協調這些接收端播放。
     -   `rate`, `pitch`, `volume`, `voice` 等參數會傳遞給接收端用於語音合成。
     -   播放完成後，伺服器會向控制端發送 `speakOver` 事件。
+    -   `queueing` 屬性決定當伺服器正在處理上一個語音請求時如何處理此新請求：
+        -   `interrupt` (預設): 立刻停止當前播放，開始播放新內容。
+        -   `wait`: 等待當前句子播放完畢，然後開始播放新內容。
+        -   `append`: 將新句子的列表附加到當前播放佇列的末尾。
 
 ### 5. `speakConfig`
 

@@ -28,9 +28,14 @@ const SPEAK_CONFIG_CHANGE_TIMEOUT = 'changeTimeout';// Controller changes speak 
 const SPEAK_CONFIG_SHOW_USER = 'showUser';        // Controller requests user voice preferences
 const SPEAK_CONFIG_STOP_SPEAK = 'stopSpeak';      // Controller requests to stop all current speech
 
+// SpeakAdvance Queueing Behavior
+const SPEAK_QUEUE_INTERRUPT = 'interrupt';
+const SPEAK_QUEUE_WAIT = 'wait';
+const SPEAK_QUEUE_APPEND = 'append';
+
 // Default Speak Timeout Values (can be overridden by SPEAK_CONFIG_CHANGE_TIMEOUT)
 const SPEAK_TIMEOUT_DEFAULT_DELAY_MS = 700;
-const SPEAK_TIMEOUT_DEFAULT_SPEED_FACTOR = 200;
+const SPEAK_TIMEOUT_DEFAULT_SPEED_FACTOR = 1000;
 
 
 module.exports = {
@@ -62,6 +67,11 @@ module.exports = {
     SPEAK_CONFIG_CHANGE_TIMEOUT,
     SPEAK_CONFIG_SHOW_USER,
     SPEAK_CONFIG_STOP_SPEAK,
+
+    // SpeakAdvance Queueing Behavior
+    SPEAK_QUEUE_INTERRUPT,
+    SPEAK_QUEUE_WAIT,
+    SPEAK_QUEUE_APPEND,
 
     // Default Values
     SPEAK_TIMEOUT_DEFAULT_DELAY_MS,
